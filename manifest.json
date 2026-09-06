@@ -1,0 +1,35 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Blockrooms",
+    "description": "Blockrooms Behavior Pack",
+    "uuid": "c3ccd664-1fd7-48d3-a5a0-cc8836150d6e",
+    "version": [0, 0, 1],
+    "min_engine_version": [1, 20, 0]
+  },
+  "modules": [
+    {
+      "description": "Behaviors",
+      "version": [0, 0, 1],
+      "uuid": "e02cfe48-4163-4261-894c-7db5f09060ac",
+      "type": "data"
+    },
+    {
+      "type": "script",
+      "language": "javascript",
+      "uuid": "37528cf2-6448-4887-9c49-5e722bec0451",
+      "entry": "scripts/main.js",
+      "version": [0, 0, 1]
+    }
+  ],
+  "dependencies": [
+    {
+      "uuid": "6846a37b-8d36-405b-88f1-4e7c49acb547",
+      "version": [0, 0, 1]
+    },
+    {
+      "module_name": "@minecraft/server",
+      "version": "beta"
+    }
+  ]
+}

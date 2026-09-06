@@ -1,0 +1,264 @@
+import { system } from "@minecraft/server";
+import { Cell } from "../cell/Cell.js";
+import { Queue } from "./Queue.js";
+import { blockRooms } from "../main.js";
+import { CellState } from "../types/CellState.js";
+import { DimensionContext } from "./DimensionContext.js";
+
+export class GenerationDispatcher {
+	constructor() {
+		/**@type {Queue<Cell>} */
+		this.requestQueue = new Queue();
+
+		/**@type {number} */
+		this.requestLoopId = undefined;
+
+		/**@type {Queue<Cell>} */
+		this.dispatchQueue = new Queue();
+
+		/**@type {number} */
+		this.dispatchLoopId = undefined;
+
+		/**@type {Map<Cell, number>} */
+		this.runningJobs = new Map();
+	}
+
+	// ************
+	// ** Public **
+	// ************
+
+	get requestLoopRunning() {
+		return this.requestLoopId !== undefined;
+	}
+
+	get dispatchLoopRunning() {
+		return this.dispatchLoopId !== undefined;
+	}
+
+	get runningJobCount() {
+		return this.runningJobs.size;
+	}
+
+	/**
+	 * Adds cells to the request queue and starts the request loop if it's not already running.
+	 * @param  {...Cell} cells
+	 */
+	request(...cells) {
+		for (const cell of cells) {
+			if (this.requestQueue.has(cell)) continue;
+			if (cell.state !== CellState.Idle) continue;
+
+			this.requestQueue.enqueue(cell);
+		}
+
+		if (!this.requestLoopRunning) {
+			this._startRequestLoop();
+		}
+	}
+
+	/**
+	 *
+	 * @param  {...Cell} cells
+	 */
+	tryDelete(...cells) {
+		for (const cell of cells) {
+			const isIdle = cell.state === CellState.Idle;
+			const isPending = cell.state === CellState.Pending;
+			const isPaused = cell.state === CellState.Paused;
+			const isWorking = cell.state === CellState.Working;
+
+			const hasAnyInterest = cell.hasActiveInterest || cell.hasRetainedInterest;
+			const hasActiveInterest = cell.hasActiveInterest;
+
+			if (hasActiveInterest) continue;
+
+			if (isIdle && !hasAnyInterest) {
+				cell.delete();
+				continue;
+			}
+
+			if (isPending && !hasAnyInterest) {
+				cell.delete();
+				continue;
+			}
+
+			if (isPaused && !hasAnyInterest) {
+				cell.delete();
+				continue;
+			}
+
+			if (isWorking) {
+				const jobId = this.runningJobs.get(cell);
+
+				if (jobId !== undefined) {
+					system.clearJob(jobId);
+					this.runningJobs.delete(cell);
+				}
+
+				if (hasAnyInterest) {
+					cell.setState(CellState.Paused);
+				} else {
+					cell.delete();
+				}
+			}
+		}
+	}
+
+	// **************
+	// ** Internal **
+	// **************
+
+	_startRequestLoop() {
+		this.requestLoopId = system.runInterval(() => this._processRequests(), blockRooms.REQUEST_INTERVAL_TICKS);
+	}
+
+	_stopRequestLoop() {
+		if (this.requestLoopRunning) {
+			system.clearRun(this.requestLoopId);
+			this.requestLoopId = undefined;
+		}
+	}
+
+	_startDispatchLoop() {
+		this.dispatchLoopId = system.runInterval(() => this._dispatchCells(), blockRooms.DISPATCH_INTERVAL_TICKS);
+	}
+
+	_stopDispatchLoop() {
+		if (this.dispatchLoopRunning) {
+			system.clearRun(this.dispatchLoopId);
+			this.dispatchLoopId = undefined;
+		}
+	}
+
+	/**
+	 * Processes cells in the request queue, moving them to the dispatch queue if they are ready for generation.
+	 */
+	_processRequests() {
+		const lengthSnapshot = this.requestQueue.length;
+
+		for (let i = 0; i < Math.min(lengthSnapshot, blockRooms.MAX_REQUESTS_PER_CYCLE); i++) {
+			const cell = this.requestQueue.dequeue();
+
+			const hasInterest = cell.interestCount > 0;
+			const notIdle = cell.state !== CellState.Idle;
+			const notLoaded = !cell.isLoaded;
+
+			if (!hasInterest) continue;
+
+			if (notIdle) continue;
+
+			if (notLoaded) {
+				this.requestQueue.enqueue(cell);
+				continue;
+			}
+
+			if (this._cellIsFinished(cell)) {
+				cell.setState(CellState.Finished);
+				continue;
+			}
+
+			cell.setState(CellState.Pending);
+			this.dispatchQueue.enqueue(cell);
+
+			if (!this.dispatchLoopRunning) {
+				this._startDispatchLoop();
+			}
+		}
+
+		if (this.requestQueue.length === 0) {
+			this._stopRequestLoop();
+		}
+	}
+
+	/**
+	 * Dispatches cells from the dispatch queue for generation, respecting the maximum dispatch limit per cycle.
+	 */
+	_dispatchCells() {
+		if (this.runningJobCount >= blockRooms.MAX_CONCURRENT_GENERATIONS) {
+			return;
+		}
+
+		const cellsPerJob = 8;
+		const lengthSnapshot = this.dispatchQueue.length;
+
+		const availableCapacity = blockRooms.MAX_CONCURRENT_GENERATIONS - this.runningJobCount;
+		const numberToAdmit = Math.min(availableCapacity, blockRooms.MAX_DISPATCH_PER_CYCLE);
+
+		let dispatched = 0;
+
+		for (let i = 0; i < lengthSnapshot; i++) {
+			const numberToDispatch = Math.min(cellsPerJob, lengthSnapshot - i);
+
+			/**@type {Cell[]} */
+			const cellsToDispatch = [];
+
+			while (cellsToDispatch.length < numberToDispatch) {
+				if (this.dispatchQueue.length === 0) break;
+
+				const cellToCheck = this.dispatchQueue.dequeue();
+
+				const noInterest = !cellToCheck.hasActiveInterest && !cellToCheck.hasRetainedInterest;
+				const noActiveInterest = cellToCheck.hasRetainedInterest && !cellToCheck.hasActiveInterest;
+				const notLoaded = !cellToCheck.isLoaded;
+
+				if (noInterest) {
+					cellToCheck.delete();
+					continue;
+				}
+
+				if (noActiveInterest) {
+					cellToCheck.setState(CellState.Idle);
+					continue;
+				}
+
+				if (notLoaded) {
+					this.dispatchQueue.enqueue(cellToCheck);
+					continue;
+				}
+
+				cellsToDispatch.push(cellToCheck);
+			}
+
+			if (cellsToDispatch.length === 0) {
+				break;
+			}
+
+			const dimensionContext = blockRooms.dimensionContexts.get(cellsToDispatch[0].dimension);
+
+			cellsToDispatch.forEach((cell) => cell.setState(CellState.Working));
+
+			const jobId = system.runJob(this._runGeneration(cellsToDispatch, dimensionContext));
+			this.runningJobs.set(cellsToDispatch[0], jobId);
+
+			dispatched += cellsToDispatch.length;
+		}
+
+		if (this.dispatchQueue.length === 0) {
+			this._stopDispatchLoop();
+		}
+	}
+
+	/**
+	 * Determines if a cell is finished based on its minimum corner block type.
+	 * @param {Cell} cell
+	 */
+	_cellIsFinished(cell) {
+		// Logic here gonna change I'm sure.
+
+		const blockAtMin = cell.dimension.getBlock(cell.min);
+
+		return blockAtMin.typeId === "minecraft:bedrock";
+	}
+
+	/**
+	 * Runs the generation process for a given cell using the provided dimension context's generator function.
+	 * @param {Cell[]} cells
+	 * @param {DimensionContext} context
+	 */
+	*_runGeneration(cells, context) {
+		yield* context.generator(cells, context);
+
+		cells.forEach((cell) => cell.setState(CellState.Finished));
+		this.runningJobs.delete(cells[0]);
+	}
+}
