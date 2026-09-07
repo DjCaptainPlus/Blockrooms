@@ -69,49 +69,8 @@ export class RootZone extends Zone {
 		}
 
 		const hallwayZoneType = ZoneTypes.get("hallway_zone");
-		const wallZoneType = ZoneTypes.get("wall_zone");
-
-		const separatorMin = separator.min;
-		const separatorMax = separator.max;
-		const separatorSize = separator.size;
-		const separatorXLength = separatorSize.x;
-		const separatorZLength = separatorSize.z;
-
-		let hallwayRegion;
-		let wallRegionA;
-		let wallRegionB;
-
-		if (separatorXLength > separatorZLength) {
-			const hallwayOrigin = { x: separatorMin.x, y: separatorMin.y, z: separatorMin.z + 1 };
-			const hallwaySize = { x: separatorSize.x, y: separatorSize.y, z: separatorSize.z - 2 };
-
-			const wallSize = { x: separatorSize.x, y: separatorSize.y, z: 1 };
-			const wallAOrigin = separatorMin;
-			const wallBOrigin = { x: separatorMin.x, y: separatorMin.y, z: separatorMax.z };
-
-			hallwayRegion = new Region(hallwayOrigin, hallwaySize);
-			wallRegionA = new Region(wallAOrigin, wallSize);
-			wallRegionB = new Region(wallBOrigin, wallSize);
-		} else {
-			const hallwayOrigin = { x: separatorMin.x + 1, y: separatorMin.y, z: separatorMin.z };
-			const hallwaySize = { x: separatorSize.x - 2, y: separatorSize.y, z: separatorSize.z };
-
-			const wallSize = { x: 1, y: separatorSize.y, z: separatorSize.z };
-			const wallAOrigin = separatorMin;
-			const wallBOrigin = { x: separatorMax.x, y: separatorMin.y, z: separatorMin.z };
-
-			hallwayRegion = new Region(hallwayOrigin, hallwaySize);
-			wallRegionA = new Region(wallAOrigin, wallSize);
-			wallRegionB = new Region(wallBOrigin, wallSize);
-		}
-
-		const hallWayZone = new hallwayZoneType(this.dimensionContext, hallwayRegion, this);
-		const wallAZone = new wallZoneType(this.dimensionContext, wallRegionA, this);
-		const wallBZone = new wallZoneType(this.dimensionContext, wallRegionB, this);
-
+		const hallWayZone = new hallwayZoneType(this.dimensionContext, separator, this);
 		newPartitions.push(hallWayZone.rootPartition);
-		newPartitions.push(wallAZone.rootPartition);
-		newPartitions.push(wallBZone.rootPartition);
 
 		return newPartitions;
 	}
