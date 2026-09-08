@@ -104,7 +104,30 @@ export class Region {
 		}
 	}
 
-	slice() {}
+	/**
+	 * Slices the Region along the specified axis from start to end offsets.
+	 * @param {"x"|"z"} axis
+	 * @param {number} start
+	 * @param {number} end
+	 */
+	slice(axis, start, end) {
+		try {
+			this._validateAxis(axis);
+			this._validateStartEnd(axis, start, end);
+
+			const sliceOrigin = { ...this.min };
+			sliceOrigin[axis] = this.min[axis] + start;
+
+			const sliceSize = { ...this.size };
+			sliceSize[axis] = end - start;
+
+			const sliceRegion = new Region(sliceOrigin, sliceSize);
+
+			return sliceRegion;
+		} catch (error) {
+			throw new Error(`Failed to slice region: ${error.message}`);
+		}
+	}
 
 	expand(amount) {}
 
@@ -151,6 +174,40 @@ export class Region {
 
 		if (new Set(offsets).size !== offsets.length) {
 			throw new Error(`Offsets must be unique.`);
+		}
+	}
+
+	/**
+	 * Slices the Region along the specified axis.
+	 * @param {"x"|"z"} axis
+	 * @param {number} start
+	 * @param {number} end
+	 * @returns {Region}
+	 */
+	_validateStartEnd(axis, start, end) {
+		const rangeMin = 0;
+		const axisMax = this.size[axis];
+
+		if (!Number.isInteger(start)) {
+			throw new TypeError(`Start offset (${start}) is not an integer.`);
+		}
+		if (!Number.isInteger(end)) {
+			throw new TypeError(`End offset (${end}) is not an integer.`);
+		}
+
+		if (start < rangeMin || start > axisMax - 1) {
+			throw new RangeError(`Start offset (${start}) is out of range. Must be between ${rangeMin} and ${axisMax - 1}.`);
+		}
+		if (end < rangeMin || end > axisMax) {
+			throw new RangeError(`End offset (${end}) is out of range. Must be between ${rangeMin} and ${axisMax}.`);
+		}
+
+		if (start === end) {
+			throw new Error(`Start and end offsets cannot be the same.`);
+		}
+
+		if (start > end) {
+			throw new Error(`Start offset (${start}) must be less than end offset (${end}).`);
 		}
 	}
 }
