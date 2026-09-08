@@ -9,6 +9,15 @@ import { RNGStreamNames } from "../types/RNGStreamNames.js";
 import { ZoneTypes } from "../zones/ZoneTypes.js";
 
 export class Zone {
+	static id = "";
+
+	static constraints = {
+		minSize: { x: 32, z: 32 },
+		maxSize: { x: 128, z: 128 },
+		preferredSize: { x: 96, z: 96 },
+		aspectRatio: 1 / 1
+	};
+
 	static splittingRules = {
 		minPartitionSize: {
 			x: 8,
@@ -48,7 +57,7 @@ export class Zone {
 		/**@type {Region} */
 		this.region = region;
 
-		/**@type {Zone} */
+		/**@type {Zone|undefined} */
 		this.parentZone = parentZone || undefined;
 
 		/**@type {number} */

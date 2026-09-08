@@ -62,11 +62,95 @@ export class Region {
 		return `${this.origin.x},${this.origin.y},${this.origin.z}:${this.size.x},${this.size.y},${this.size.z}`;
 	}
 
+	/**
+	 * Splits the Region into multiple smaller Regions along the specified axis at the given offsets.
+	 * @param {"x"|"z"} axis
+	 * @param {number[]} offsets
+	 */
+	split(axis, ...offsets) {
+		try {
+			this._validateAxis(axis);
+			this._validateOffsets(axis, offsets);
+
+			offsets.sort((a, b) => a - b);
+
+			const regions = [];
+
+			let previousOffset = 0;
+			for (const offset of offsets) {
+				const origin = { ...this.min };
+				const size = { ...this.size };
+
+				origin[axis] = this.min[axis] + previousOffset;
+				size[axis] = offset - previousOffset;
+
+				const newRegion = new Region(origin, size);
+				regions.push(newRegion);
+
+				previousOffset = offset;
+			}
+
+			const remainderOrigin = { ...this.min };
+			const remainderSize = { ...this.size };
+			remainderOrigin[axis] = this.min[axis] + previousOffset;
+			remainderSize[axis] = this.size[axis] - previousOffset;
+
+			const remainderRegion = new Region(remainderOrigin, remainderSize);
+			regions.push(remainderRegion);
+
+			return regions;
+		} catch (error) {
+			throw new Error(`Failed to split region: ${error.message}`);
+		}
+	}
+
+	slice() {}
+
+	expand(amount) {}
+
+	inset(amount) {}
+
 	_calculateMax() {
 		return {
 			x: this.origin.x + this.size.x - 1,
 			y: this.origin.y + this.size.y - 1,
 			z: this.origin.z + this.size.z - 1
 		};
+	}
+
+	/**
+	 * Validates the axis for splitting the region.
+	 * @param {"x"|"z"} axis
+	 */
+	_validateAxis(axis) {
+		if (axis !== "x" && axis !== "z") {
+			throw new Error(`Invalid axis: ${axis}. Must be "x" or "z".`);
+		}
+	}
+
+	/**
+	 * Validates the offsets for splitting the region.
+	 * @param {"x"|"z"} axis
+	 * @param {number[]} offsets
+	 */
+	_validateOffsets(axis, offsets) {
+		const rangeMin = 1;
+		const rangeMax = this.size[axis] - 1;
+
+		for (let i = 0; i < offsets.length; i++) {
+			const offset = offsets[i];
+
+			if (!Number.isInteger(offset)) {
+				throw new TypeError(`Offset at index ${i} (${offset}) is not an integer.`);
+			}
+
+			if (offset < rangeMin || offset > rangeMax) {
+				throw new RangeError(`Offset at index ${i} (${offset}) is out of range. Must be between ${rangeMin} and ${rangeMax}.`);
+			}
+		}
+
+		if (new Set(offsets).size !== offsets.length) {
+			throw new Error(`Offsets must be unique.`);
+		}
 	}
 }
