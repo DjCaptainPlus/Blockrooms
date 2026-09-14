@@ -1,4 +1,7 @@
 /** @typedef {typeof import("../generation/Zone.js").Zone} ZoneType */
+/** @typedef {import("../generation/Zone.js").Zone} Zone */
+/** @typedef {import("../classes/Region.js").Region} Region */
+/** @typedef {import("../classes/DimensionContext.js").DimensionContext} DimensionContext */
 
 export class ZoneTypes {
 	/** @type {Map<string, ZoneType>} */
@@ -23,5 +26,22 @@ export class ZoneTypes {
 		}
 
 		return this.types.get(zoneTypeId);
+	}
+
+	static getAll() {
+		return Array.from(this.types.values());
+	}
+
+	/**
+	 * Creates a new instance of a registered zone type.
+	 * @param {string} zoneTypeId
+	 * @param {DimensionContext} dimensionContext
+	 * @param {Region} region
+	 * @param {Zone} [parentZone]
+	 * @returns
+	 */
+	static create(zoneTypeId, dimensionContext, region, parentZone) {
+		const ZoneClass = this.get(zoneTypeId);
+		return new ZoneClass(dimensionContext, region, parentZone);
 	}
 }

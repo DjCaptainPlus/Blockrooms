@@ -35,6 +35,13 @@ declare global {
     selectionDepth?: number
   }
 
+  interface ZoneConstraints {
+    minSize: { x: number; z: number }
+    maxSize: { x: number; z: number }
+    /**Aspect ratio is x / z */
+    aspectRatio?: number
+  }
+
   interface SubzoneType {
     typeId: string
     weight?: number
@@ -44,4 +51,21 @@ declare global {
     regions: Region[]
     separator?: Region
   }
+
+  interface ValueRange {
+    min: number
+    max: number
+  }
+
+  interface ZoneCandidate {
+    type: typeof Zone
+    splitRanges:
+      | {
+          x: ValueRange | undefined
+          z: ValueRange | undefined
+        }
+      | undefined
+  }
+
+  type Axis = 'x' | 'z'
 }

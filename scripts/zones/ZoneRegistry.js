@@ -1,12 +1,11 @@
-import { BasicZone } from "./BasicZone.js";
-import { HallwayZone } from "./HallwayZone.js";
-import { OtherZone } from "./OtherZone.js";
+import { BlackZone } from "./BlackZone.js";
+import { FallbackZone } from "./FallbackZone.js";
+import { RedZone } from "./RedZone.js";
 import { RootZone } from "./RootZone.js";
-import { WallZone } from "./WallZone.js";
-import { YetAnotherZone } from "./YetAnotherZone.js";
+import { YellowZone } from "./YellowZone.js";
 import { ZoneTypes } from "./ZoneTypes.js";
 
-const registry = [BasicZone, OtherZone, YetAnotherZone, RootZone, HallwayZone, WallZone];
+const registry = [BlackZone, RedZone, YellowZone, RootZone, FallbackZone];
 
 export function registerZones() {
 	for (const zoneType of registry) {
@@ -18,7 +17,7 @@ export function registerZones() {
 			ZoneTypes.register(zoneType);
 
 			// Log successful registration.
-			console.log(`Registered Zone '${zoneType.id}'`);
+			//console.log(`Registered Zone '${zoneType.id}'`);
 		} catch (error) {
 			console.error(`Unable to register Zone '${zoneType.id}': ${error.message}'`);
 		}

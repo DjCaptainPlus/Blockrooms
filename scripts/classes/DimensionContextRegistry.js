@@ -7,7 +7,6 @@ import { InfiniteGenerator } from "../bsp/InfiniteGenerator.js";
 import { Random } from "../math/Random.js";
 import { blockRooms } from "../main.js";
 import { DimensionGenerator } from "../generation/DimensionGenerator.js";
-import { BasicZone } from "../zones/BasicZone.js";
 import { ZoneTypes } from "../zones/ZoneTypes.js";
 
 const MAX_VOLUME_CAPACITY = 128;
@@ -164,6 +163,10 @@ function* testGenerator(cell, player, context) {
 				}
 				case "wall_zone": {
 					blockId = "minecraft:gray_wool";
+					break;
+				}
+				case "fallback_zone": {
+					blockId = "minecraft:green_wool";
 					break;
 				}
 			}

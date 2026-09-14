@@ -2,7 +2,6 @@ import { Region } from "../classes/Region.js";
 import { Random } from "../math/Random.js";
 import { Partition } from "./Partition.js";
 
-
 export class Split {
 	/**
 	 * @param {Partition | Region} partitionOrRegion
@@ -96,5 +95,20 @@ export class Split {
 		const childB = new Region({ x: min.x, y: min.y, z: min.z + lengthA + gap }, { x: size.x, y: size.y, z: size.z - lengthA - gap });
 
 		return { regions: [childA, childB], separator };
+	}
+
+	/**
+	 * Calculates the overlapping range between two ValueRanges.
+	 * @param {ValueRange} range1
+	 * @param {ValueRange} range2
+	 * @returns {ValueRange | undefined}
+	 */
+	static getRangeOverlap(range1, range2) {
+		const min = Math.max(range1.min, range2.min);
+		const max = Math.min(range1.max, range2.max);
+
+		if (min > max) return;
+
+		return { min, max };
 	}
 }

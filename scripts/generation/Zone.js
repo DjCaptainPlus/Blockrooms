@@ -7,38 +7,26 @@ import { Random } from "../math/Random.js";
 import { RandomFactory } from "../math/RandomFactory.js";
 import { RNGStreamNames } from "../types/RNGStreamNames.js";
 import { ZoneTypes } from "../zones/ZoneTypes.js";
+import { Axis } from "../types/Axis.js";
 
 export class Zone {
 	static id = "";
 
+	/**@type {ZoneConstraints} */
 	static constraints = {
-		minSize: { x: 32, z: 32 },
-		maxSize: { x: 128, z: 128 },
-		preferredSize: { x: 96, z: 96 },
-		aspectRatio: 1 / 1
+		minSize: { x: 1, z: 1 },
+		maxSize: { x: Infinity, z: Infinity },
+		aspectRatio: undefined
 	};
 
-	static splittingRules = {
-		minPartitionSize: {
-			x: 8,
-			y: 8,
-			z: 8
-		},
-		maxPartitionSize: {
-			x: 64,
-			y: 64,
-			z: 64
-		},
-		splitChance: 1,
+	static subdivideRules = {
+		enabled: true,
 		gap: 1
 	};
 
 	static subzoneRules = {
-		selectionDepth: 25
+		enabled: true
 	};
-
-	/**@type {SubzoneType[]} */
-	static subzoneTypes = [];
 
 	/**
 	 * Creates a new Zone instance.
@@ -110,47 +98,122 @@ export class Zone {
 		return this.constructor.subzoneTypes;
 	}
 
+	/**@returns {ZoneConstraints} */
+	get constraints() {
+		return this.constructor.constraints;
+	}
+
 	/**
 	 * Expands a partition into children, or returns undefined if final.
 	 * @param {Partition} parentPartition
 	 * @returns {Partition[] | undefined}
 	 */
 	expandPartition(parentPartition) {
-		if (!this.canSubdivide(parentPartition)) return undefined;
+		const parentRegion = parentPartition.region;
+		const selectZoneRandom = this.randomFactory.createStream(parentPartition.identity(), "select_zone");
+		const axisRandom = this.randomFactory.createStream(parentPartition.identity(), "split_axis");
+		const splitPositionRandom = this.randomFactory.createStream(parentPartition.identity(), "split_position");
 
-		const newPartitions = [];
-		const shouldSubdivide = this.shouldSubdivide(parentPartition);
+		/**@type {Set<ZoneCandidate>} */
+		const candidates = new Set();
 
-		if (!shouldSubdivide) return undefined;
+		for (const zoneType of ZoneTypes.getAll()) {
+			if (zoneType.id === "root_zone" || zoneType.id === this.id) continue;
 
-		const { regions: childRegions, separator } = this.subdivide(parentPartition);
+			const splitRanges = zoneType.getValidSplitRanges(parentRegion, 1);
 
-		for (const region of childRegions) {
-			const shouldSubzone = this.shouldSubzone(region, parentPartition);
+			if (!splitRanges) continue;
 
-			if (!shouldSubzone) {
-				newPartitions.push(new Partition(this, region, parentPartition));
-				continue;
-			}
-
-			const zoneType = this.selectSubzoneType(region, parentPartition);
-
-			if (!zoneType) {
-				newPartitions.push(new Partition(this, region, parentPartition));
-				continue;
-			}
-
-			const newZone = new zoneType(this.dimensionContext, region, this);
-
-			newPartitions.push(newZone.rootPartition);
+			candidates.add({ type: zoneType, splitRanges });
 		}
 
-		const wallZoneType = ZoneTypes.get("wall_zone");
-		const wallZone = new wallZoneType(this.dimensionContext, separator, this);
+		if (candidates.length === 0) return;
 
-		newPartitions.push(wallZone.rootPartition);
+		/**@type {ZoneCandidate[]} */
+		const selectedZones = [];
 
-		return newPartitions;
+		const selectCount = 2;
+		if (candidates.size < selectCount) return;
+
+		const maxAttempts = 6;
+		let attempts = 0;
+		while (selectedZones.length < selectCount) {
+			const randomIndex = Math.floor(selectZoneRandom.float() * candidates.size);
+			const selectedZone = Array.from(candidates)[randomIndex];
+
+			selectedZones.push(selectedZone);
+			candidates.delete(selectedZone);
+
+			if (++attempts >= maxAttempts) {
+				const thisType = ZoneTypes.get(this.id);
+				const zonesNeeded = selectCount - selectedZones.length;
+
+				if (zonesNeeded > 0) {
+					for (let i = 0; i < zonesNeeded; i++) {
+						selectedZones.push({ type: thisType, splitRanges: thisType.getValidSplitRanges(parentRegion, 1) });
+					}
+				}
+
+				break;
+			}
+		}
+
+		const getSharedRange = (axis) => {
+			const range1 = selectedZones[0].splitRanges[axis];
+			const range2 = selectedZones[1].splitRanges[axis];
+
+			if (!range1 || !range2) return;
+
+			const availableSpace = parentRegion.size[axis] - 1;
+			const min = Math.max(range1.min, availableSpace - range2.max);
+			const max = Math.min(range1.max, availableSpace - range2.min);
+
+			if (min > max) return;
+
+			return { min, max };
+		};
+
+		const xRange = getSharedRange(Axis.x);
+		const zRange = getSharedRange(Axis.z);
+
+		const xSplitAllowed = xRange !== undefined;
+		const zSplitAllowed = zRange !== undefined;
+
+		const subzoneX = () => {
+			const xSplit = splitPositionRandom.intRange(xRange.min, xRange.max);
+
+			const [regionA, gap, regionB] = parentRegion.split(Axis.x, xSplit, xSplit + 1);
+
+			const zoneA = new selectedZones[0].type(this.dimensionContext, regionA);
+			const zoneB = new selectedZones[1].type(this.dimensionContext, regionB);
+
+			return [zoneA.rootPartition, zoneB.rootPartition];
+		};
+
+		const subzoneZ = () => {
+			const zSplit = splitPositionRandom.intRange(zRange.min, zRange.max);
+
+			const [regionA, gap, regionB] = parentRegion.split(Axis.z, zSplit, zSplit + 1);
+
+			const zoneA = new selectedZones[0].type(this.dimensionContext, regionA);
+			const zoneB = new selectedZones[1].type(this.dimensionContext, regionB);
+
+			return [zoneA.rootPartition, zoneB.rootPartition];
+		};
+
+		if (xSplitAllowed && zSplitAllowed) {
+			const roll = axisRandom.float();
+
+			if (roll < 0.5) {
+				return subzoneX();
+			} else {
+				return subzoneZ();
+			}
+		} else if (xSplitAllowed) {
+			return subzoneX();
+		} else if (zSplitAllowed) {
+			return subzoneZ();
+		}
 	}
 
 	/**
@@ -159,6 +222,58 @@ export class Zone {
 	 */
 	static canOccupy(region) {
 		return true;
+	}
+
+	/**
+	 * Calculates the valid split ranges for both axes within a region, considering the zone's constraints and a specified gap.
+	 * @param {Region} region
+	 * @param {number} gap
+	 * @returns {{x: ValueRange|undefined, z: ValueRange|undefined}|undefined}
+	 */
+	static getValidSplitRanges(region, gap) {
+		const x = this.getLengthRange(region, Axis.x, gap);
+		const z = this.getLengthRange(region, Axis.z, gap);
+
+		if (!x && !z) return undefined;
+
+		return { x, z };
+	}
+
+	/**
+	 * Calculates the valid length range for a given axis within a region, considering the zone's constraints and a specified gap.
+	 * @param {Region} region
+	 * @param {Axis} axis
+	 * @param {number} gap
+	 * @returns {ValueRange}
+	 */
+	static getLengthRange(region, axis, gap) {
+		const aspectRatio = this.constraints.aspectRatio;
+		const minSize = this.constraints.minSize;
+		const maxSize = this.constraints.maxSize;
+
+		const availableLength = region.size[axis] - gap;
+		const fixedAxis = Axis.other(axis);
+		const fixedLength = region.size[fixedAxis];
+
+		if (availableLength < minSize[axis]) return;
+		if (fixedLength < minSize[fixedAxis]) return;
+		if (fixedLength > maxSize[fixedAxis]) return;
+
+		if (!aspectRatio) {
+			const min = minSize[axis];
+			const max = Math.min(availableLength, maxSize[axis]);
+
+			return { min, max };
+		}
+
+		const requiredLength = axis === Axis.x ? fixedLength * aspectRatio : fixedLength / aspectRatio;
+
+		if (!Number.isInteger(requiredLength)) return;
+		if (requiredLength < minSize[axis]) return;
+		if (requiredLength > maxSize[axis]) return;
+		if (requiredLength > availableLength) return;
+
+		return { min: requiredLength, max: requiredLength };
 	}
 
 	/**
@@ -237,5 +352,16 @@ export class Zone {
 		const randomIndex = Math.floor(subzoneTypeStream.float() * availableZones.length);
 
 		return ZoneTypes.get(availableZones[randomIndex].typeId);
+	}
+
+	/**
+	 * Creates a child zone within the given region.
+	 * @param {string} zoneId
+	 * @param {Region} region
+	 * @returns {Zone}
+	 */
+	createSubzone(zoneId, region) {
+		const ZoneClass = ZoneTypes.get(zoneId);
+		return new ZoneClass(this.dimensionContext, region, this);
 	}
 }
